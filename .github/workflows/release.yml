@@ -31,9 +31,11 @@ jobs:
           go build -trimpath -ldflags "-s -w -X main.version=${version}" -o dist/package/alice-ha-fastcommands .
           cp config.example.json dist/package/config.example.json
           cp init/S99zzalice-ha-fastcommands dist/package/S99zzalice-ha-fastcommands
+          cp scripts/install.sh dist/package/install.sh
+          cp scripts/uninstall.sh dist/package/uninstall.sh
           cp LICENSE dist/package/LICENSE
           cp README.md dist/package/README.md
-          chmod 0755 dist/package/alice-ha-fastcommands dist/package/S99zzalice-ha-fastcommands
+          chmod 0755 dist/package/alice-ha-fastcommands dist/package/S99zzalice-ha-fastcommands dist/package/install.sh dist/package/uninstall.sh
           tar -C dist/package -czf dist/alice-ha-fastcommands-linux-arm64.tar.gz .
           (cd dist && sha256sum alice-ha-fastcommands-linux-arm64.tar.gz > SHA256SUMS)
       - name: Create GitHub release

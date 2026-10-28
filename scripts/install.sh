@@ -5,6 +5,8 @@ REPO=SHAREN/yandex-station-ha-fastcommands
 ROOT=/data/opt/alice-ha-fastcommands
 INIT=/etc/init.d/S99zzalice-ha-fastcommands
 VERSION=${VERSION:-latest}
+ROOT_RW=0
+INSTALL_STATUS=1
 
 if [ "$(id -u)" != "0" ]; then
     echo "Run this installer as root on the Yandex Station." >&2
@@ -19,20 +21,56 @@ case "$(uname -m)" in
         ;;
 esac
 
+download() {
+    url=$1
+    output=$2
+    rm -f "$output"
+
+    if command -v curl >/dev/null 2>&1; then
+        if curl -fsSL "$url" -o "$output" && [ -s "$output" ]; then
+            return 0
+        fi
+        rm -f "$output"
+    fi
+
+    if command -v wget >/dev/null 2>&1; then
+        if wget -q -O "$output" "$url" 2>/dev/null && [ -s "$output" ]; then
+            return 0
+        fi
+        rm -f "$output"
+    fi
+
+    echo "No working HTTPS downloader was found on the Station." >&2
+    echo "Use scripts/install-adb.ps1 (Windows) or scripts/install-adb.sh (Linux/macOS/WSL) from a computer instead." >&2
+    return 1
+}
+
 if [ "$VERSION" = "latest" ]; then
     BASE="https://github.com/$REPO/releases/latest/download"
 else
     BASE="https://github.com/$REPO/releases/download/$VERSION"
 fi
 
-TMP="$ROOT/.install.$$"
+TMP="$ROOT/.install-tmp"
 PACKAGE=alice-ha-fastcommands-linux-arm64.tar.gz
+rm -rf "$TMP"
 mkdir -p "$TMP"
 chmod 700 "$TMP"
-trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
-wget -q -O "$TMP/$PACKAGE" "$BASE/$PACKAGE"
-wget -q -O "$TMP/SHA256SUMS" "$BASE/SHA256SUMS"
+cleanup() {
+    trap - EXIT HUP INT TERM
+    if [ "$ROOT_RW" = "1" ]; then
+        sync
+        mount -o remount,ro / >/dev/null 2>&1 || true
+    fi
+    rm -rf "$TMP"
+    exit "$INSTALL_STATUS"
+}
+trap cleanup EXIT
+trap 'exit 1' HUP INT TERM
+
+download "$BASE/$PACKAGE" "$TMP/$PACKAGE"
+download "$BASE/SHA256SUMS" "$TMP/SHA256SUMS"
 (
     cd "$TMP"
     grep "  $PACKAGE$" SHA256SUMS | sha256sum -c -
@@ -56,21 +94,18 @@ else
     echo "Keeping existing $ROOT/config.json"
 fi
 
-restore_ro() {
-    sync
-    mount -o remount,ro / >/dev/null 2>&1 || true
-}
-
 mount -o remount,rw /
-trap 'restore_ro; rm -rf "$TMP"' EXIT HUP INT TERM
+ROOT_RW=1
 cp "$TMP/S99zzalice-ha-fastcommands" "$INIT"
 chmod 755 "$INIT"
-restore_ro
-trap 'rm -rf "$TMP"' EXIT HUP INT TERM
+sync
+mount -o remount,ro /
+ROOT_RW=0
 
 if grep -q 'CHANGE_ME_TO_A_RANDOM_ID' "$ROOT/config.json"; then
     echo "Installed, but not started: configure webhook_url in $ROOT/config.json first."
     echo "Then run: $INIT start"
+    INSTALL_STATUS=0
     exit 0
 fi
 
@@ -79,3 +114,4 @@ fi
 "$INIT" status
 
 echo "Installed successfully. Log: $ROOT/fastcommands.log"
+INSTALL_STATUS=0

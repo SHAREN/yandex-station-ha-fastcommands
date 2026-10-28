@@ -19,6 +19,11 @@ jobs:
           cache: false
       - name: Format check
         run: test -z "$(gofmt -l .)"
+      - name: Shell installer syntax
+        run: sh -n scripts/install.sh scripts/uninstall.sh scripts/install-adb.sh init/S99zzalice-ha-fastcommands
+      - name: PowerShell installer syntax
+        shell: pwsh
+        run: '[scriptblock]::Create((Get-Content -Raw scripts/install-adb.ps1)) | Out-Null'
       - name: Unit tests
         run: go test ./...
       - name: Vet

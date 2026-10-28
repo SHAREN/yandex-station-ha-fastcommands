@@ -30,68 +30,66 @@ Home Assistant webhook
 
 ## Быстрый старт
 
-### 1. Home Assistant
+### 1. Установка с компьютера по root ADB
+
+Это основной способ установки: release скачивается **на компьютер**, поэтому Станции не нужен HTTPS-клиент. Некоторые прошивки имеют BusyBox `wget` без поддержки HTTPS.
+
+#### Windows PowerShell
+
+```powershell
+Invoke-WebRequest `
+  https://raw.githubusercontent.com/SHAREN/yandex-station-ha-fastcommands/main/scripts/install-adb.ps1 `
+  -OutFile "$env:TEMP\install-alice-ha-fastcommands.ps1"
+
+powershell -ExecutionPolicy Bypass -File "$env:TEMP\install-alice-ha-fastcommands.ps1" `
+  -Serial 192.168.1.50:5555 `
+  -HomeAssistantUrl http://192.168.1.10:8123 `
+  -StationName bedroom
+```
+
+#### Linux / macOS / WSL
+
+```sh
+curl -fsSL \
+  https://raw.githubusercontent.com/SHAREN/yandex-station-ha-fastcommands/main/scripts/install-adb.sh \
+  -o /tmp/install-alice-ha-fastcommands.sh
+chmod +x /tmp/install-alice-ha-fastcommands.sh
+/tmp/install-alice-ha-fastcommands.sh \
+  192.168.1.50:5555 \
+  http://192.168.1.10:8123 \
+  bedroom
+```
+
+Installer скачивает ARM64 release, проверяет SHA256, проверяет root ADB, запускает self-test и IPC probe, устанавливает bridge и автозапуск. При первой установке он также генерирует случайный **Webhook ID** и выводит его в конце. Существующий `config.json` при обновлении сохраняется.
+
+### 2. Home Assistant
 
 Импортируйте Blueprint:
 
 `https://github.com/SHAREN/yandex-station-ha-fastcommands/blob/main/blueprints/automation/yandex_station_fastcommands.yaml`
 
-Создайте automation из Blueprint и задайте:
+Создайте automation из Blueprint и вставьте **Webhook ID**, который вывел installer. Затем выберите:
 
-- уникальный случайный **Webhook ID**;
 - фразу включения (по умолчанию `включи свет`);
 - фразу выключения (по умолчанию `выключи свет`);
 - любые действия Home Assistant для каждой фразы.
 
 Webhook в Blueprint создаётся с `local_only: true` и принимает только `POST`.
 
-### 2. Установка на рутированную Станцию
+Если хотите заранее выбрать Webhook ID сами, передайте его installer'у параметром `-WebhookId` в PowerShell или четвёртым аргументом в `install-adb.sh`.
 
-Запустите от `root` на самой Станции:
-
-```sh
-wget -q -O /tmp/install-alice-ha-fastcommands.sh \
-  https://raw.githubusercontent.com/SHAREN/yandex-station-ha-fastcommands/main/scripts/install.sh
-sh /tmp/install-alice-ha-fastcommands.sh
-```
-
-Installer скачивает ARM64 release, проверяет SHA256 и встроенный self-test, кладёт программу в `/data/opt/alice-ha-fastcommands` и устанавливает отдельный init-скрипт. Существующий `config.json` при обновлении не перезаписывается.
-
-### 3. Настройка bridge
-
-При первой установке появится:
-
-```text
-/data/opt/alice-ha-fastcommands/config.json
-```
-
-Измените минимум `station` и `webhook_url`:
-
-```json
-{
-  "station": "bedroom",
-  "aliced_addr": "127.0.0.1:9875",
-  "webhook_url": "http://homeassistant.local:8123/api/webhook/YOUR_RANDOM_WEBHOOK_ID",
-  "cancel_native_dialog": true,
-  "debounce_ms": 1200,
-  "allowed_commands": [
-    "включи свет",
-    "выключи свет"
-  ],
-  "log_file": "/data/opt/alice-ha-fastcommands/fastcommands.log"
-}
-```
-
-После этого:
+### 3. Проверка
 
 ```sh
-/data/opt/alice-ha-fastcommands/alice-ha-fastcommands \
-  -config /data/opt/alice-ha-fastcommands/config.json --probe
-/etc/init.d/S99zzalice-ha-fastcommands start
 /etc/init.d/S99zzalice-ha-fastcommands status
+tail -n 50 /data/opt/alice-ha-fastcommands/fastcommands.log
 ```
 
 Теперь произнесите рядом со Станцией **«включи свет»**, не говоря «Алиса».
+
+### Установка прямо со Станции
+
+`scripts/install.sh` тоже поддерживается, но только если на самой Станции есть HTTPS-capable `curl` или `wget`. На части прошивок штатный BusyBox `wget` HTTPS не поддерживает, поэтому ADB installer выше считается рекомендуемым вариантом.
 
 ## Диагностика
 
@@ -138,19 +136,19 @@ Bridge автоматически переподключается к `aliced`, 
 
 ## Удаление
 
-Скачать и выполнить uninstaller:
+С компьютера с ADB:
 
 ```sh
-wget -q -O /tmp/uninstall-alice-ha-fastcommands.sh \
-  https://raw.githubusercontent.com/SHAREN/yandex-station-ha-fastcommands/main/scripts/uninstall.sh
-sh /tmp/uninstall-alice-ha-fastcommands.sh
+adb -s 192.168.1.50:5555 shell '/etc/init.d/S99zzalice-ha-fastcommands stop; mount -o remount,rw /; rm -f /etc/init.d/S99zzalice-ha-fastcommands; sync; mount -o remount,ro /'
 ```
 
-По умолчанию config и логи сохраняются. Для полного удаления:
+После этого bridge больше не стартует, а config и логи остаются в `/data/opt/alice-ha-fastcommands`. Для полного удаления данных:
 
 ```sh
-PURGE=1 sh /tmp/uninstall-alice-ha-fastcommands.sh
+adb -s 192.168.1.50:5555 shell 'rm -rf /data/opt/alice-ha-fastcommands'
 ```
+
+В репозитории также есть `scripts/uninstall.sh`, если на Станцию удобнее заранее передать готовый uninstaller через ADB/SSH.
 
 ## Сборка
 
