@@ -1,0 +1,14 @@
+# Build output
+alice-ha-fastcommands
+*.exe
+dist/
+
+# Local configuration and secrets
+config.json
+*.local.json
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

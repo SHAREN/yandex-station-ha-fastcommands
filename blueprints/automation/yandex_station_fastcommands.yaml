@@ -1,0 +1,63 @@
+blueprint:
+  name: Yandex Station local fast commands → Home Assistant
+  description: >-
+    Receives locally spotted short commands from a rooted Yandex Station through
+    alice-ha-fastcommands. The webhook is LAN-only and does not require a Home
+    Assistant bearer token. Configure a unique webhook ID, then use the same ID
+    in the station bridge config.
+  domain: automation
+  source_url: https://github.com/SHAREN/yandex-station-ha-fastcommands/blob/main/blueprints/automation/yandex_station_fastcommands.yaml
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    webhook_id:
+      name: Webhook ID
+      description: >-
+        Use a unique, non-guessable value. Put the same value after
+        /api/webhook/ in the station's webhook_url.
+      selector:
+        text:
+    turn_on_phrase:
+      name: Turn-on phrase
+      default: "включи свет"
+      selector:
+        text:
+    turn_off_phrase:
+      name: Turn-off phrase
+      default: "выключи свет"
+      selector:
+        text:
+    turn_on_actions:
+      name: Actions for the turn-on phrase
+      description: Choose any Home Assistant actions to run when the station hears the turn-on phrase.
+      selector:
+        action:
+    turn_off_actions:
+      name: Actions for the turn-off phrase
+      description: Choose any Home Assistant actions to run when the station hears the turn-off phrase.
+      selector:
+        action:
+
+variables:
+  command_text: "{{ trigger.json.command | default('') | lower | trim }}"
+  expected_turn_on: !input turn_on_phrase
+  expected_turn_off: !input turn_off_phrase
+
+triggers:
+  - trigger: webhook
+    webhook_id: !input webhook_id
+    allowed_methods:
+      - POST
+    local_only: true
+
+actions:
+  - choose:
+      - conditions:
+          - "{{ command_text == (expected_turn_on | lower | trim) }}"
+        sequence: !input turn_on_actions
+      - conditions:
+          - "{{ command_text == (expected_turn_off | lower | trim) }}"
+        sequence: !input turn_off_actions
+
+mode: queued
+max: 10

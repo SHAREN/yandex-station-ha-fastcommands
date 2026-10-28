@@ -1,0 +1,48 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.x"
+          cache: false
+      - name: Test
+        run: go test ./...
+      - name: Build ARM64 package
+        env:
+          CGO_ENABLED: "0"
+          GOOS: linux
+          GOARCH: arm64
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME}"
+          mkdir -p dist/package
+          go build -trimpath -ldflags "-s -w -X main.version=${version}" -o dist/package/alice-ha-fastcommands .
+          cp config.example.json dist/package/config.example.json
+          cp init/S99zzalice-ha-fastcommands dist/package/S99zzalice-ha-fastcommands
+          cp LICENSE dist/package/LICENSE
+          cp README.md dist/package/README.md
+          chmod 0755 dist/package/alice-ha-fastcommands dist/package/S99zzalice-ha-fastcommands
+          tar -C dist/package -czf dist/alice-ha-fastcommands-linux-arm64.tar.gz .
+          (cd dist && sha256sum alice-ha-fastcommands-linux-arm64.tar.gz > SHA256SUMS)
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            dist/alice-ha-fastcommands-linux-arm64.tar.gz \
+            dist/SHA256SUMS \
+            --verify-tag \
+            --generate-notes \
+            --title "$GITHUB_REF_NAME"

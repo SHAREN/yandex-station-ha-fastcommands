@@ -1,0 +1,87 @@
+#!/bin/sh
+set -u
+
+BIN=/data/opt/alice-ha-fastcommands/alice-ha-fastcommands
+CONFIG=/data/opt/alice-ha-fastcommands/config.json
+PIDFILE=/data/opt/alice-ha-fastcommands/alice-ha-fastcommands.pid
+LOGFILE=/data/opt/alice-ha-fastcommands/fastcommands.log
+
+pid_is_agent() {
+    pid="$1"
+    case "$pid" in
+        ''|*[!0-9]*) return 1 ;;
+    esac
+    kill -0 "$pid" 2>/dev/null || return 1
+    tr '\000' ' ' < "/proc/$pid/cmdline" 2>/dev/null | grep -Fq "$BIN"
+}
+
+start_agent() {
+    mkdir -p /data/opt/alice-ha-fastcommands
+    chmod 700 /data/opt/alice-ha-fastcommands
+    chmod 700 "$BIN" 2>/dev/null || true
+    chmod 600 "$CONFIG" 2>/dev/null || true
+
+    if [ -s "$PIDFILE" ]; then
+        pid=$(cat "$PIDFILE" 2>/dev/null || true)
+        if pid_is_agent "$pid"; then
+            return 0
+        fi
+        rm -f "$PIDFILE"
+    fi
+
+    [ -x "$BIN" ] || { echo "fastcommands binary missing: $BIN" >&2; return 1; }
+    [ -r "$CONFIG" ] || { echo "fastcommands config missing: $CONFIG" >&2; return 1; }
+
+    start-stop-daemon --start --background --make-pidfile \
+        --pidfile "$PIDFILE" --startas "$BIN" -- \
+        -config "$CONFIG"
+    sleep 1
+
+    pid=$(cat "$PIDFILE" 2>/dev/null || true)
+    if pid_is_agent "$pid"; then
+        return 0
+    fi
+    echo "fastcommands failed to start; see $LOGFILE" >&2
+    rm -f "$PIDFILE"
+    return 1
+}
+
+stop_agent() {
+    [ -s "$PIDFILE" ] || return 0
+    pid=$(cat "$PIDFILE" 2>/dev/null || true)
+    if pid_is_agent "$pid"; then
+        kill "$pid" 2>/dev/null || true
+        n=0
+        while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 50 ]; do
+            n=$((n + 1))
+            sleep 0.1
+        done
+    fi
+    rm -f "$PIDFILE"
+}
+
+status_agent() {
+    if [ -s "$PIDFILE" ]; then
+        pid=$(cat "$PIDFILE" 2>/dev/null || true)
+        if pid_is_agent "$pid"; then
+            echo "running pid=$pid"
+            return 0
+        fi
+    fi
+    echo "stopped"
+    return 1
+}
+
+case "${1:-start}" in
+    start) start_agent ;;
+    stop) stop_agent ;;
+    restart)
+        stop_agent
+        start_agent
+        ;;
+    status) status_agent ;;
+    *)
+        echo "Usage: $0 {start|stop|restart|status}" >&2
+        exit 2
+        ;;
+esac

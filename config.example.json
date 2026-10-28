@@ -1,0 +1,12 @@
+{
+  "station": "bedroom",
+  "aliced_addr": "127.0.0.1:9875",
+  "webhook_url": "http://homeassistant.local:8123/api/webhook/CHANGE_ME_TO_A_RANDOM_ID",
+  "cancel_native_dialog": true,
+  "debounce_ms": 1200,
+  "allowed_commands": [
+    "включи свет",
+    "выключи свет"
+  ],
+  "log_file": "/data/opt/alice-ha-fastcommands/fastcommands.log"
+}
